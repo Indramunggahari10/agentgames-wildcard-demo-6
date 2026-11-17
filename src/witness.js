@@ -100,23 +100,43 @@ export function parseBlockField(value) {
 }
 
 /**
- * Map an arbitrary task id string onto a BN128 field element.
- * UUID substring (if present) as a 128-bit integer; else bare 32-hex;
- * else 0x-hex reduced mod p; else SHA-256 of the UTF-8 string, mod p.
+ * Map an arbitrary task id string onto a BN128 field element, reporting
+ * which mapping branch applied. UUID substring (if present) as a 128-bit
+ * integer; else bare 32-hex; else 0x-hex reduced mod p; else SHA-256 of
+ * the UTF-8 string, mod p. Mirrors the gatekeeper's mapping exactly,
+ * including its documented aliasing: different strings can map to the
+ * same element (e.g. any string containing the same UUID substring, or
+ * values differing by a multiple of p). The branch is reported so the
+ * aliasing is explicit, not hidden. When several UUIDs appear, the FIRST
+ * match wins (String.match semantics).
  */
-export function taskIdToField(taskId) {
+export function taskIdMapping(taskId) {
   const s = String(taskId).trim();
   const uuidMatch = s.match(
     /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/,
   );
   if (uuidMatch) {
-    return BigInt("0x" + uuidMatch[0].replace(/-/g, "")).toString();
+    return {
+      method: "uuid-substring",
+      value: BigInt("0x" + uuidMatch[0].replace(/-/g, "")).toString(),
+    };
   }
   const uuid = s.replace(/-/g, "");
-  if (/^[0-9a-fA-F]{32}$/.test(uuid)) return BigInt("0x" + uuid).toString();
-  if (/^0x[0-9a-fA-F]+$/.test(s)) return (BigInt(s) % FIELD_PRIME).toString();
+  if (/^[0-9a-fA-F]{32}$/.test(uuid)) {
+    return { method: "bare-32-hex", value: BigInt("0x" + uuid).toString() };
+  }
+  if (/^0x[0-9a-fA-F]+$/.test(s)) {
+    return { method: "0x-hex-mod-p", value: (BigInt(s) % FIELD_PRIME).toString() };
+  }
   const digest = createHash("sha256").update(s, "utf8").digest();
-  return (BigInt("0x" + digest.toString("hex")) % FIELD_PRIME).toString();
+  return {
+    method: "sha256-mod-p",
+    value: (BigInt("0x" + digest.toString("hex")) % FIELD_PRIME).toString(),
+  };
+}
+
+export function taskIdToField(taskId) {
+  return taskIdMapping(taskId).value;
 }
 
 /** Fresh random salt: 31 random bytes, always < 2^248 < FIELD_PRIME. */
@@ -237,6 +257,8 @@ export function buildWitness(input) {
       ? parseDecimalField(input.salt).toString()
       : randomSalt();
 
+  const mapping = taskIdMapping(input.task_id);
+
   const witness = {
     registeredVkHash: parseHexField(input.registered_vk).toString(),
     proofVkHash: parseHexField(input.proof_vk).toString(),
@@ -249,11 +271,11 @@ export function buildWitness(input) {
     amount: parseDecimalField(input.amount).toString(),
     maxTransfer: parseDecimalField(input.max_transfer).toString(),
     decision: decision === "APPROVE" ? "1" : "0",
-    taskId: taskIdToField(input.task_id),
+    taskId: mapping.value,
     salt,
   };
 
-  return { witness, checks, reason_code, decision, warnings };
+  return { witness, checks, reason_code, decision, warnings, taskIdMapping: mapping };
 }
 
 // Lazy Poseidon singleton (circomlibjs builds over wasm; build once).
@@ -292,6 +314,7 @@ export async function buildRequest(body) {
     decision: built.decision,
     reason_code: built.reason_code,
     warnings: built.warnings,
-    note: "Witness building and validation only. No proof is generated, and the publicSignals preview proves nothing by itself.",
+    taskIdMapping: built.taskIdMapping,
+    note: "Expected public signals, computed locally using the stated circuit conventions. No proof has been generated or verified; this preview does not establish circuit satisfiability.",
   };
 }

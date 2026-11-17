@@ -35,7 +35,14 @@ memory and never stored.
   in circuit order.
 - **taskId mapping** — a UUID substring maps to its 128-bit integer; else a
   bare 32-hex value maps directly; else `0x`-hex reduces mod p; anything
-  else falls back to SHA-256 of the UTF-8 string, mod p.
+  else falls back to SHA-256 of the UTF-8 string, mod p. The mapping is
+  intentionally non-injective (different strings can alias to the same
+  element), so the tool reports which branch applied. When several UUIDs
+  appear, the first match wins.
+- **Field-element equality, stated plainly** — hex comparisons are
+  field-element comparisons: values differing by a multiple of p compare
+  equal, exactly as the circuit compares them. This is not full-byte hash
+  equality, and the tool does not claim otherwise.
 - **Salt** — leave blank for a fresh random salt (31 random bytes, always
   below 2^248), or supply your own decimal.
 - **publicSignals preview** — 13 signals: `Poseidon(salt, taskId)` first
@@ -54,7 +61,7 @@ memory and never stored.
 ```sh
 npm install
 npm start        # listens on $PORT (default 3000)
-npm test         # 52 tests: parsers, mapping, checks, witness, signals, HTTP
+npm test         # 55 tests: parsers, mapping, checks, witness, signals, HTTP
 ```
 
 ## Endpoints

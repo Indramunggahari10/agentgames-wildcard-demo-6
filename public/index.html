@@ -127,7 +127,8 @@
   <div id="warnings"></div>
 
   <h3>Witness JSON <button type="button" id="copyWitness">Copy</button></h3>
-  <p class="note">13 inputs in circuit order, decimal strings — the shape <code>snarkjs.groth16.fullProve</code> accepts as circuit input.</p>
+  <p class="note">13 inputs in circuit order, decimal strings — the shape <code>snarkjs.groth16.fullProve</code> accepts as circuit input. <code>salt</code> is private input material: it appears in the witness, never in the public signals.</p>
+  <p class="note" id="mappingLine"></p>
   <pre id="witnessOut"></pre>
 
   <h3>publicSignals preview</h3>
@@ -280,6 +281,9 @@ document.getElementById("form").addEventListener("submit", async (ev) => {
 
   const witnessJson = JSON.stringify(data.witness, null, 2);
   document.getElementById("witnessOut").textContent = witnessJson;
+  document.getElementById("mappingLine").textContent =
+    "taskId mapping: " + data.taskIdMapping.method + " → " + data.taskIdMapping.value +
+    " (different strings can map to the same element — e.g. any string containing the same UUID).";
   document.getElementById("copyWitness").onclick = (e) => copyText(witnessJson, e.target);
 
   const sigBody = document.querySelector("#signalsTable tbody");

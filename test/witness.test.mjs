@@ -9,6 +9,7 @@ import {
   parseDecimalField,
   parseBlockField,
   taskIdToField,
+  taskIdMapping,
   randomSalt,
   validateTaskInput,
   evaluateChecks,
@@ -136,6 +137,35 @@ test("taskId: arbitrary strings fall back to SHA-256 mod p, deterministically", 
 
 test("taskId: surrounding whitespace is trimmed", () => {
   assert.equal(taskIdToField("  0xff  "), "255");
+});
+
+test("taskIdMapping: reports the branch used for each form", () => {
+  const uuid = "123e4567-e89b-12d3-a456-426614174000";
+  assert.equal(taskIdMapping(`task_R05_${uuid}`).method, "uuid-substring");
+  assert.equal(taskIdMapping("123e4567e89b12d3a456426614174000").method, "bare-32-hex");
+  assert.equal(taskIdMapping("0xff").method, "0x-hex-mod-p");
+  assert.equal(taskIdMapping("hello-task").method, "sha256-mod-p");
+  assert.equal(
+    taskIdMapping(`task_R05_${uuid}`).value,
+    BigInt("0x123e4567e89b12d3a456426614174000").toString(),
+  );
+});
+
+test("taskIdMapping: aliasing is real — different strings, same element", () => {
+  const uuid = "123e4567-e89b-12d3-a456-426614174000";
+  assert.equal(taskIdToField(`task_R05_${uuid}`), taskIdToField(`practice_${uuid}`));
+  assert.equal(taskIdToField(`task_R05_${uuid}`), taskIdToField(uuid));
+  // Values differing by a multiple of p alias through the 0x-hex branch.
+  assert.equal(taskIdToField("0x" + (P + 5n).toString(16)), taskIdToField("0x5"));
+});
+
+test("taskIdMapping: first UUID wins when several appear", () => {
+  const a = "123e4567-e89b-12d3-a456-426614174000";
+  const b = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+  assert.equal(
+    taskIdToField(`x-${a}-y-${b}`),
+    BigInt("0x123e4567e89b12d3a456426614174000").toString(),
+  );
 });
 
 // ---------- randomSalt ----------
@@ -360,7 +390,10 @@ test("buildRequest: full shape with layout labels and honesty note", async () =>
   assert.equal(r.publicSignalsLayout[0], "poseidon(salt, taskId)");
   assert.deepEqual(r.publicSignalsLayout.slice(1), PUBLIC_INPUT_KEYS);
   assert.deepEqual(r.warnings, []);
-  assert.match(r.note, /No proof is generated/);
+  assert.match(r.note, /No proof has been generated or verified/);
+  assert.match(r.note, /does not establish circuit satisfiability/);
+  assert.equal(r.taskIdMapping.method, "uuid-substring");
+  assert.equal(r.taskIdMapping.value, r.witness.taskId);
 });
 
 // ---------- examples ----------
