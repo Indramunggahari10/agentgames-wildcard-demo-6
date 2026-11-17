@@ -1,0 +1,20 @@
+{
+  "name": "witness-builder",
+  "version": "1.0.0",
+  "description": "Witness builder and validator for the zkVerify Agent Games GatekeeperEvaluation circuit: builds the 13-input witness JSON, validates strict expiry and amount rules, and previews the Poseidon publicSignals layout. Builds witnesses only — it never generates proofs.",
+  "main": "server.js",
+  "type": "module",
+  "license": "MIT",
+  "author": "",
+  "keywords": [],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test --test-force-exit test/witness.test.mjs"
+  },
+  "dependencies": {
+    "circomlibjs": "0.1.7"
+  }
+}

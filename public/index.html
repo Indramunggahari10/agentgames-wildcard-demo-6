@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Witness Builder — GatekeeperEvaluation witness layout</title>
+<style>
+  :root { color-scheme: light; --ok:#1a7f37; --bad:#cf222e; --warn:#9a6700; --line:#d0d7de; --bg:#f6f8fa; }
+  body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0 auto; max-width: 880px; padding: 24px 16px 64px; color: #1f2328; }
+  h1 { font-size: 1.6em; margin-bottom: 4px; }
+  .sub { color: #57606a; margin-top: 0; }
+  .honest { border: 2px solid var(--warn); background: #fff8c5; padding: 12px 14px; border-radius: 8px; }
+  .honest b { color: var(--warn); }
+  fieldset { border: 1px solid var(--line); border-radius: 8px; margin: 16px 0; padding: 14px; }
+  legend { font-weight: 600; padding: 0 6px; }
+  label { display: block; font-size: 0.9em; margin: 10px 0 3px; color: #424a53; }
+  label code { color: #1f2328; }
+  input[type=text], input[type=number] { width: 100%; box-sizing: border-box; padding: 8px; font: 0.95em ui-monospace, monospace; border: 1px solid var(--line); border-radius: 6px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+  button { cursor: pointer; border-radius: 6px; border: 1px solid var(--line); background: #fff; padding: 8px 14px; font-size: 0.95em; }
+  button.primary { background: #0969da; color: #fff; border-color: #0969da; font-weight: 600; }
+  button:hover { filter: brightness(0.97); }
+  .examples { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+  .examples button { font-size: 0.85em; }
+  table { border-collapse: collapse; width: 100%; margin: 8px 0; }
+  td, th { border: 1px solid var(--line); padding: 7px 9px; text-align: left; font-size: 0.92em; }
+  th { background: var(--bg); }
+  .pass { color: var(--ok); font-weight: 700; }
+  .fail { color: var(--bad); font-weight: 700; }
+  .warn { color: var(--warn); }
+  pre { background: #0d1117; color: #e6edf3; padding: 14px; border-radius: 8px; overflow-x: auto; font-size: 0.85em; }
+  .sig { font-family: ui-monospace, monospace; word-break: break-all; }
+  .decision { font-size: 1.25em; font-weight: 700; }
+  .decision.approve { color: var(--ok); }
+  .decision.reject { color: var(--bad); }
+  #error { color: var(--bad); font-weight: 600; }
+  .note { color: #57606a; font-size: 0.9em; }
+  .rowbtns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  footer { margin-top: 32px; color: #57606a; font-size: 0.85em; border-top: 1px solid var(--line); padding-top: 12px; }
+</style>
+</head>
+<body>
+<h1>Witness Builder</h1>
+<p class="sub">Builds the 13-input witness for the GatekeeperEvaluation circuit, validates the decision rules, and previews the publicSignals layout.</p>
+
+<p class="honest"><b>Honest scope:</b> this tool builds witness JSON and validates inputs. It does <b>NOT</b> generate proofs, it does not verify proofs, and the publicSignals preview proves nothing by itself. A real proof still needs the official circuit artifacts and a prover (e.g. snarkjs <code>groth16.fullProve</code>).</p>
+
+<fieldset>
+  <legend>Examples</legend>
+  <div class="examples" id="examples"><span class="note">Loading…</span></div>
+  <p class="note">All example values are invented for teaching. None is a real task, address, or key.</p>
+</fieldset>
+
+<form id="form">
+  <fieldset>
+    <legend>Verification keys (hex)</legend>
+    <div class="grid">
+      <div><label for="registered_vk"><code>registered_vk</code> — registered verification-key hash</label>
+      <input type="text" id="registered_vk" value="0x00aa11" spellcheck="false"></div>
+      <div><label for="proof_vk"><code>proof_vk</code> — verification-key hash in the proof</label>
+      <input type="text" id="proof_vk" value="0xaa11" spellcheck="false"></div>
+    </div>
+    <p class="note">Hex fields accept an optional <code>0x</code> prefix, any case, and leading zeros — spellings of the same value are the same field element (reduced mod p).</p>
+  </fieldset>
+
+  <fieldset>
+    <legend>Threshold (non-negative integers)</legend>
+    <div class="grid">
+      <div><label for="minimum"><code>minimum</code></label>
+      <input type="text" id="minimum" value="100" spellcheck="false"></div>
+      <div><label for="public_balance"><code>public_balance</code> — must be ≥ minimum</label>
+      <input type="text" id="public_balance" value="250" spellcheck="false"></div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Expiry (integers — strict)</legend>
+    <div class="grid">
+      <div><label for="expiry_block"><code>expiry_block</code></label>
+      <input type="text" id="expiry_block" value="500" spellcheck="false"></div>
+      <div><label for="current_block"><code>current_block</code> — must be &lt; expiry_block</label>
+      <input type="text" id="current_block" value="499" spellcheck="false"></div>
+    </div>
+    <p class="note">Expiry is <b>strict</b>: <code>current_block == expiry_block</code> is EXPIRED and the decision is REJECT. Try the “Expired at the boundary” example.</p>
+  </fieldset>
+
+  <fieldset>
+    <legend>Recipients (hex) and amount</legend>
+    <div class="grid">
+      <div><label for="recipient"><code>recipient</code></label>
+      <input type="text" id="recipient" value="0x1234" spellcheck="false"></div>
+      <div><label for="condition_recipient"><code>condition_recipient</code> — must equal recipient</label>
+      <input type="text" id="condition_recipient" value="0x1234" spellcheck="false"></div>
+      <div><label for="amount"><code>amount</code> — must be ≤ max_transfer</label>
+      <input type="text" id="amount" value="10" spellcheck="false"></div>
+      <div><label for="max_transfer"><code>max_transfer</code></label>
+      <input type="text" id="max_transfer" value="100" spellcheck="false"></div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Task binding</legend>
+    <label for="task_id"><code>task_id</code> — mapped to a field element (UUID substring → 128-bit int; else 32-hex; else 0x-hex mod p; else SHA-256 mod p)</label>
+    <input type="text" id="task_id" value="task_R05_123e4567-e89b-12d3-a456-426614174000" spellcheck="false">
+    <label for="salt"><code>salt</code> — optional decimal; leave blank for a fresh random salt (31 random bytes)</label>
+    <input type="text" id="salt" value="12345" spellcheck="false">
+    <div class="rowbtns">
+      <button type="button" id="freshSalt">Fresh random salt</button>
+    </div>
+    <p class="note">Proof-reuse (a proof seen before) is <b>not</b> part of the witness decision — replay detection is off-circuit state, so this tool does not check it.</p>
+  </fieldset>
+
+  <div class="rowbtns">
+    <button type="submit" class="primary">Build witness</button>
+  </div>
+</form>
+
+<p id="error" role="alert"></p>
+
+<section id="result" hidden>
+  <h2>Result</h2>
+  <p><span id="decision" class="decision"></span> <span id="reason"></span></p>
+  <table id="checksTable">
+    <thead><tr><th>On-circuit check</th><th>Result</th><th>Rule</th></tr></thead>
+    <tbody></tbody>
+  </table>
+  <div id="warnings"></div>
+
+  <h3>Witness JSON <button type="button" id="copyWitness">Copy</button></h3>
+  <p class="note">13 inputs in circuit order, decimal strings — the shape <code>snarkjs.groth16.fullProve</code> accepts as circuit input.</p>
+  <pre id="witnessOut"></pre>
+
+  <h3>publicSignals preview</h3>
+  <p class="note">Layout: signal 0 is the Poseidon binding <code>Poseidon(salt, taskId)</code>, then the 12 inputs in order minus salt. This preview is computed, not proven — it shows what the prover would publish. <button type="button" id="copySignals">Copy</button></p>
+  <table id="signalsTable">
+    <thead><tr><th>#</th><th>Signal</th><th>Value</th></tr></thead>
+    <tbody></tbody>
+  </table>
+  <p class="note" id="resultNote"></p>
+</section>
+
+<footer>
+  Witness Builder — a teaching tool for the zkVerify Agent Games GatekeeperEvaluation witness layout.
+  No signing, no chain reads, no persistence. Inputs are processed in memory and never stored.
+  Poseidon via circomlibjs. The publicSignals layout was verified against the official circuit artifacts.
+</footer>
+
+<script>
+const FIELDS = ["registered_vk","proof_vk","minimum","public_balance","expiry_block","current_block","recipient","condition_recipient","amount","max_transfer","task_id","salt"];
+const CHECK_RULES = {
+  vkMatch: "registeredVkHash == proofVkHash (as field elements)",
+  thresholdOk: "publicBalance >= minimum",
+  notExpired: "currentBlock < expiryBlock (strict — equality is expired)",
+  recipientOk: "recipient == conditionRecipient (as field elements)",
+  amountOk: "amount <= maxTransfer",
+};
+const CHECK_NAMES = {
+  vkMatch: "VK match",
+  thresholdOk: "Threshold",
+  notExpired: "Not expired",
+  recipientOk: "Recipient",
+  amountOk: "Amount",
+};
+
+function readForm() {
+  const body = {};
+  for (const f of FIELDS) {
+    const el = document.getElementById(f);
+    let v = el.value.trim();
+    if (f === "expiry_block" || f === "current_block") {
+      // Keep integers as numbers when they fit safely, else strings.
+      if (/^[+-]?\d+$/.test(v)) {
+        const n = Number(v);
+        body[f] = Number.isSafeInteger(n) ? n : v;
+      } else {
+        body[f] = v;
+      }
+    } else if (f === "salt" && v === "") {
+      // omitted -> server generates a fresh random salt
+    } else {
+      body[f] = v;
+    }
+  }
+  return body;
+}
+
+function fillForm(input) {
+  for (const f of FIELDS) {
+    const el = document.getElementById(f);
+    el.value = input[f] === undefined || input[f] === null ? "" : String(input[f]);
+  }
+}
+
+async function loadExamples() {
+  const box = document.getElementById("examples");
+  try {
+    const res = await fetch("/api/examples");
+    const data = await res.json();
+    box.innerHTML = "";
+    for (const ex of data.examples) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = ex.name;
+      b.addEventListener("click", () => { fillForm(ex.input); document.getElementById("error").textContent = ""; });
+      box.appendChild(b);
+    }
+  } catch {
+    box.innerHTML = '<span class="note">Examples unavailable.</span>';
+  }
+}
+
+document.getElementById("freshSalt").addEventListener("click", () => {
+  const bytes = new Uint8Array(31);
+  crypto.getRandomValues(bytes);
+  let hex = "";
+  for (const b of bytes) hex += b.toString(16).padStart(2, "0");
+  document.getElementById("salt").value = BigInt("0x" + hex).toString();
+});
+
+async function copyText(text, btn) {
+  try {
+    await navigator.clipboard.writeText(text);
+    const old = btn.textContent;
+    btn.textContent = "Copied!";
+    setTimeout(() => { btn.textContent = old; }, 1500);
+  } catch {
+    btn.textContent = "Copy failed — select manually";
+  }
+}
+
+document.getElementById("form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const errEl = document.getElementById("error");
+  const resultEl = document.getElementById("result");
+  errEl.textContent = "";
+  resultEl.hidden = true;
+  let res;
+  try {
+    res = await fetch("/api/build", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(readForm()),
+    });
+  } catch {
+    errEl.textContent = "Request failed — is the server running?";
+    return;
+  }
+  const data = await res.json();
+  if (!res.ok) {
+    errEl.textContent = data.error || "Build failed.";
+    return;
+  }
+
+  const decEl = document.getElementById("decision");
+  decEl.textContent = data.decision;
+  decEl.className = "decision " + (data.decision === "APPROVE" ? "approve" : "reject");
+  document.getElementById("reason").textContent = "— " + data.reason_code;
+
+  const tbody = document.querySelector("#checksTable tbody");
+  tbody.innerHTML = "";
+  for (const [key, rule] of Object.entries(CHECK_RULES)) {
+    const ok = data.checks[key];
+    const tr = document.createElement("tr");
+    tr.innerHTML = "<td></td><td></td><td></td>";
+    tr.children[0].textContent = CHECK_NAMES[key];
+    tr.children[1].textContent = ok ? "PASS" : "FAIL";
+    tr.children[1].className = ok ? "pass" : "fail";
+    tr.children[2].textContent = rule;
+    tbody.appendChild(tr);
+  }
+
+  const warnEl = document.getElementById("warnings");
+  warnEl.innerHTML = "";
+  if (data.warnings && data.warnings.length) {
+    const p = document.createElement("p");
+    p.className = "warn";
+    p.textContent = "Warnings: " + data.warnings.join(" | ");
+    warnEl.appendChild(p);
+  }
+
+  const witnessJson = JSON.stringify(data.witness, null, 2);
+  document.getElementById("witnessOut").textContent = witnessJson;
+  document.getElementById("copyWitness").onclick = (e) => copyText(witnessJson, e.target);
+
+  const sigBody = document.querySelector("#signalsTable tbody");
+  sigBody.innerHTML = "";
+  data.publicSignals.forEach((sig, i) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = "<td></td><td></td><td class='sig'></td>";
+    tr.children[0].textContent = i;
+    tr.children[1].textContent = data.publicSignalsLayout[i];
+    tr.children[2].textContent = sig;
+    sigBody.appendChild(tr);
+  });
+  const sigJson = JSON.stringify(data.publicSignals, null, 2);
+  document.getElementById("copySignals").onclick = (e) => copyText(sigJson, e.target);
+  document.getElementById("resultNote").textContent = data.note;
+  resultEl.hidden = false;
+});
+
+loadExamples();
+</script>
+</body>
+</html>
